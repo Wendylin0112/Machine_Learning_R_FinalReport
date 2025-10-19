@@ -1,0 +1,297 @@
+---
+title: "期末報告"
+author: "412210037 林威岑 & 412210010 施柏均"
+date: "2024-12-14"
+output: word_document
+---
+
+# Topic:Diabetes Prediction
+
+### Import csv data
+
+```{r}
+# 設定檔案的路徑
+file_path = "C:/Users/USER/Documents/diabetes.csv"
+
+# 載入 readr 套件
+library(readr)
+
+# 使用 read_csv 匯入資料
+Diabetes_data = read_csv(file_path)
+
+# 檢查資料
+print("Original dimesions")
+dim(Diabetes_data)
+names(Diabetes_data)
+summary(Diabetes_data)
+
+# 觀察資料之間的關係
+pairs(Diabetes_data)
+cor(Diabetes_data)
+
+# 資料前處理(刪除等於0的欄位，但不包含懷孕變數中的0以及判斷結果的0)
+Diabetes_data = Diabetes_data[rowSums(Diabetes_data[, -c(1,9)] == 0)==0,]
+print("dimesions after delete rows which has 0\n")
+dim(Diabetes_data)
+
+# 處理完後，再引入資料 
+attach(Diabetes_data)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Spilt half data into training set & testing set
+
+```{r}
+set.seed(1)
+train = sample(1:nrow(Diabetes_data), nrow(Diabetes_data)/2)
+test = rep(1:nrow(Diabetes_data))
+test = test[-train]
+```
+
+### Lec1.Linear Regression
+
+```{r}
+lm.fit = lm(Outcome ~ Pregnancies + Glucose + BloodPressure + BMI + DiabetesPedigreeFunction + Age + SkinThickness + Insulin, data = Diabetes_data)
+summary(lm.fit)
+lm.fit = lm(Outcome ~ Pregnancies + Glucose + BMI +DiabetesPedigreeFunction, data = Diabetes_data)
+summary(lm.fit)
+lm.fit = lm(Outcome ~ Pregnancies + Glucose + BloodPressure + BMI + DiabetesPedigreeFunction + Insulin, data = Diabetes_data)
+summary(lm.fit)
+ lm.fit = lm(Outcome ~ Age + Glucose + BMI + DiabetesPedigreeFunction, data = Diabetes_data)
+  summary(lm.fit)
+ 
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+### Lec2.use logistic regression
+
+```{r}
+# fitting glm model with all parameters
+glm.fit = glm(Outcome~Pregnancies + Glucose + BloodPressure + SkinThickness + Insulin + BMI + DiabetesPedigreeFunction + Age, data=Diabetes_data, subset=train, family=binomial)
+summary(glm.fit)
+
+# fitting again with selected important parameters
+glm.fit.1 = glm(Outcome~ Glucose + BMI + Age, data=Diabetes_data, subset=train, family=binomial)
+summary(glm.fit.1)
+
+# show result model coefficient
+summary(glm.fit.1)$coef
+
+# predict testing data
+glm.probs = predict(glm.fit.1,Diabetes_data[test,],type="response")
+glm.pred = rep(0,nrow(Diabetes_data)/2)
+glm.pred[glm.probs>0.5] = 1
+
+# show result of prediction & accuracy
+table(glm.pred, Outcome[test])
+mean(glm.pred==Outcome[test])
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+### Lec3.LDA
+
+```{r}
+library(MASS)
+lda1.fit = lda(Outcome ~ Pregnancies + Glucose + BloodPressure + BMI + DiabetesPedigreeFunction, data = Diabetes_data, subset = train)
+lda1.fit
+plot(lda1.fit)
+lda1.pred = predict(lda1.fit,Diabetes_data[test,])
+lda1.class = lda1.pred$class
+
+# show result of prediction & accuracy  
+table(lda1.class, Outcome[test])
+mean(lda1.class == Outcome[test])
+
+lda2.fit = lda(Outcome ~ Pregnancies + Glucose + BloodPressure + BMI + DiabetesPedigreeFunction + Insulin, data = Diabetes_data, subset = train)
+lda2.fit
+plot(lda2.fit)
+lda2.pred = predict(lda2.fit,Diabetes_data[test,])
+lda2.class = lda2.pred$class
+
+# show result of prediction & accuracy
+table(lda2.class, Outcome[test])
+mean(lda2.class == Outcome[test])
+
+lda3.fit = lda(Outcome ~ Age + Glucose + BMI + DiabetesPedigreeFunction, data = Diabetes_data, subset = train)
+lda3.fit
+plot(lda3.fit)
+lda3.pred = predict(lda3.fit,Diabetes_data[test,])
+lda3.class = lda3.pred$class
+
+# show result of prediction & accuracy
+table(lda3.class, Outcome[test])
+mean(lda3.class == Outcome[test])
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+### Lec4.use k-nearest neighbor(KNN)
+
+#### 跑迴圈k = 1\~100，找出最佳的k
+
+```{r}
+# import function
+library(class)
+
+# 設定訓練資料和測試資料 (a:全部的參數 / b:重要的參數 / c:再刪除BMI)
+train_a = Diabetes_data[train,-9] 
+test_a = Diabetes_data[test,-9]
+
+train_b = cbind(Glucose, BMI, DiabetesPedigreeFunction, Age)[train,] 
+test_b = cbind(Glucose, BMI, DiabetesPedigreeFunction, Age)[test,]
+
+train_c = cbind(Glucose, DiabetesPedigreeFunction, Age)[train,] 
+test_c = cbind(Glucose, DiabetesPedigreeFunction, Age)[test,]
+ 
+# 初始化 
+train_a.err = rep(0,100) 
+train_b.err = rep(0,100) 
+train_c.err = rep(0,100) 
+little_train_a = 1 
+little_train_b = 1 
+little_train_c = 1 
+best_train_a_k = 0 
+best_train_b_k = 0 
+best_train_c_k = 0 
+
+# 計算預測及誤差，還有找出最佳k 
+for(x in 1:100){ 
+  set.seed(1)
+  train_a.pred = knn(train_a , test_a , Outcome[train] , k=x) 
+  train_b.pred = knn(train_b , test_b , Outcome[train] , k=x) 
+  train_c.pred = knn(train_c , test_c , Outcome[train] , k=x) 
+  train_a.err[x] = mean(train_a.pred != Outcome[test]) 
+  train_b.err[x] = mean(train_b.pred != Outcome[test]) 
+  train_c.err[x] = mean(train_c.pred != Outcome[test]) 
+  if(little_train_a>train_a.err[x]){ 
+    little_train_a = train_a.err[x] 
+    best_train_a_k = x 
+  } 
+  if(little_train_b>train_b.err[x]){ 
+    little_train_b = train_b.err[x] 
+    best_train_b_k = x 
+  }
+  if(little_train_c>train_c.err[x]){ 
+    little_train_c = train_c.err[x] 
+    best_train_c_k = x 
+  }
+} 
+# 畫圖 
+plot(1:100 , train_a.err , type="b" , col="blue" ,main="KNN error rate with different k" , xlab="k" , ylab="Error Rate" , pch=20) 
+points(1:100 , train_b.err , type="b" , col="orange" , pch=20) 
+points(1:100 , train_c.err , type="b" , col="green" , pch=20) 
+points(best_train_a_k, little_train_a , type="b" , col="red" , pch="x") 
+points(best_train_b_k , little_train_b , type="b" , col="red" , pch="x") 
+points(best_train_c_k , little_train_c , type="b" , col="red" , pch="x") 
+legend("topright" , legend = c("Train_a Errors","Train_b Errors","Train_c Errors") , col=c("blue","orange","green") , pch=20 , lty=1) 
+
+# 輸出最佳的train k和test k，以及其所對應的正確率 
+c(best_train_a_k,best_train_b_k,best_train_c_k) 
+c(round(1-little_train_a,digits=5),round(1-little_train_b,digits=5),round(1-little_train_c,digits=5)) 
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Lec5.PCA
+
+```{r}
+pr.out=prcomp(Diabetes_data,scale=TRUE)
+names(pr.out)
+pr.out$rotation
+biplot(pr.out, scale=0)
+pr.out$scale
+pr.out$sdev
+pr.var = pr.out$sdev^2
+pve = pr.var/sum(pr.var)
+pve
+plot(cumsum(pve), xlab="Principal Component", ylab="Cumulative Proporti on of Variance Explained", ylim=c(0,1),type='b')
+
+
+# 將PC1,PC2 作為要被分群的資料
+train_pca = pr.out$x[,1:3]
+km.out = kmeans(train_pca,2,nstart=30)
+plot(train_pca , col=(km.out$cluster+1) , main="K-Means Clustering Result with K=2" , xlab="" , ylab="" , pch=20 , cex=1) 
+
+result = rep(1,length(km.out$cluster))
+result[km.out$cluster==2] = 0
+
+# show the result and accuracy
+table(result, t(Diabetes_data["Outcome"]))
+mean(result == t(Diabetes_data["Outcome"]))
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Lec11.Dicision tree (Classification tree)
+
+```{r}
+library(tree)
+Diabetes_data$Outcome = as.factor(Diabetes_data$Outcome)
+tree.d = tree(Outcome~.-Outcome, Diabetes_data)
+summary(tree.d)
+plot(tree.d)
+text(tree.d,pretty=0)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Lec11.Random Forest
+
+```{r}
+# import functions
+library(randomForest)
+
+Diabetes_data$Outcome = as.factor(Diabetes_data$Outcome)
+
+best_x = 0
+best_forest = 0
+best_forest_pred = 0
+best_forest_acc = 0
+
+# build a forest with training set
+for(x in 1:8){
+  Diabete_forest = randomForest(Outcome~., data=Diabetes_data, subset = train, mtry=x, importance=TRUE)
+  # predict testing data
+  Diabete_forest_pred = predict(Diabete_forest, newdata=Diabetes_data[test, ])
+  accur_forest = mean(Outcome[test]==Diabete_forest_pred)
+  if(accur_forest > best_forest_acc){
+    best_x = x
+    best_forest = Diabete_forest
+    best_forest_pred = Diabete_forest_pred
+    best_forest_acc = accur_forest
+  }
+}
+best_forest
+best_x
+importance(best_forest)
+varImpPlot(best_forest)
+
+# show the predict result
+confusion_matrix = table(best_forest_pred, Outcome[test])
+confusion_matrix
+best_forest_acc
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Lec14.SVM
+
+```{r}
+# import function
+library(e1071) 
+
+Diabetes_data$Outcome = as.factor(Diabetes_data$Outcome)
+
+tune.out = tune(svm, Outcome~.,data=Diabetes_data[train,], kernel="radial", ranges=list(cost=c(0.1,1,10,100,1000), gamma=c(0.5,1,2,3,4)))
+summary(tune.out)
+
+true=Outcome[test]
+pred=predict(tune.out$best.model, newx=Diabetes_data[test,])
+
+table(true, pred)
+mean(pred == true)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
